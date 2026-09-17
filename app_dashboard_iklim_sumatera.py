@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-
 from pathlib import Path
 
 from sklearn.ensemble import RandomForestRegressor
@@ -17,8 +16,193 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 st.set_page_config(
     page_title="Dashboard Iklim Sumatera",
     page_icon="🌦️",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
+
+
+# ============================================================
+# CSS — TAMPILAN DASHBOARD
+# ============================================================
+
+st.markdown("""
+<style>
+
+    /* Background utama */
+    .stApp {
+        background-color: #ffffff;
+    }
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(
+            180deg,
+            #f4f8fc 0%,
+            #eef4fa 100%
+        );
+        border-right: 1px solid #dce7f2;
+    }
+
+    section[data-testid="stSidebar"] > div {
+        padding-top: 1.5rem;
+    }
+
+    /* Judul utama */
+    .main-title {
+        text-align: center;
+        color: #12467a;
+        font-size: 31px;
+        font-weight: 800;
+        line-height: 1.25;
+        margin-bottom: 5px;
+    }
+
+    .subtitle {
+        text-align: center;
+        color: #58718b;
+        font-size: 15px;
+        margin-bottom: 20px;
+    }
+
+    /* Garis */
+    .blue-line {
+        height: 2px;
+        background: #d5e7f8;
+        margin: 15px 0 22px 0;
+    }
+
+    /* Section */
+    .section-title {
+        color: #123f72;
+        font-size: 21px;
+        font-weight: 750;
+        margin-bottom: 10px;
+    }
+
+    /* Profile box */
+    .profile-box {
+        background: linear-gradient(
+            135deg,
+            #f2f8ff,
+            #eaf4fd
+        );
+        border: 1px solid #cfe3f6;
+        border-radius: 10px;
+        padding: 18px 22px;
+        margin-bottom: 18px;
+    }
+
+    .profile-item {
+        font-size: 14px;
+        color: #173b60;
+        line-height: 1.9;
+    }
+
+    /* Card */
+    .metric-card {
+        border-radius: 10px;
+        padding: 17px 20px;
+        min-height: 115px;
+        border: 1px solid #dce8f4;
+        margin-bottom: 12px;
+    }
+
+    .metric-blue {
+        background: #edf6ff;
+    }
+
+    .metric-green {
+        background: #eefaf3;
+    }
+
+    .metric-yellow {
+        background: #fff9e9;
+    }
+
+    .metric-red {
+        background: #fff0f1;
+    }
+
+    .metric-label {
+        color: #3f5872;
+        font-size: 13px;
+        margin-bottom: 5px;
+    }
+
+    .metric-value {
+        color: #123d72;
+        font-size: 26px;
+        font-weight: 800;
+    }
+
+    .metric-unit {
+        color: #71849a;
+        font-size: 12px;
+    }
+
+    /* Panel */
+    .panel {
+        border: 1px solid #dbe7f2;
+        border-radius: 10px;
+        padding: 17px;
+        background: white;
+    }
+
+    /* Footer */
+    .footer-box {
+        background: #edf6ff;
+        border: 1px solid #d0e5fa;
+        border-radius: 9px;
+        padding: 13px 18px;
+        color: #285581;
+        font-size: 13px;
+        margin-top: 20px;
+    }
+
+    /* Sidebar title */
+    .sidebar-title {
+        color: #123f72;
+        font-size: 20px;
+        font-weight: 800;
+        margin-bottom: 8px;
+    }
+
+    .sidebar-section {
+        color: #123f72;
+        font-size: 18px;
+        font-weight: 750;
+        margin-top: 18px;
+        margin-bottom: 8px;
+    }
+
+    /* Tombol */
+    .stButton > button {
+        width: 100%;
+        border-radius: 8px;
+        border: none;
+        background: #147de5;
+        color: white;
+        font-weight: 700;
+        padding: 10px 15px;
+    }
+
+    .stButton > button:hover {
+        background: #0d69c7;
+        color: white;
+    }
+
+    /* Radio */
+    div[role="radiogroup"] label {
+        padding: 3px 0;
+    }
+
+    /* Dataframe */
+    .stDataFrame {
+        border-radius: 8px;
+    }
+
+</style>
+""", unsafe_allow_html=True)
 
 
 # ============================================================
@@ -33,7 +217,7 @@ DATASETS = {
 
 
 # ============================================================
-# PARAMETER IKLIM
+# PARAMETER
 # ============================================================
 
 PARAMETER_INFO = {
@@ -49,43 +233,19 @@ PARAMETER_INFO = {
 
 
 # ============================================================
-# KONFIGURASI MODEL
+# MODEL
 # ============================================================
-
-RANDOM_STATE = 42
 
 N_ESTIMATORS = 100
-
 MAX_DEPTH = 12
-
 MIN_SAMPLES_LEAF = 2
-
 TRAIN_RATIO = 0.80
-
 FORECAST_MONTHS = 360
+RANDOM_STATE = 42
 
 
 # ============================================================
-# JUDUL
-# ============================================================
-
-st.title(
-    "🌦️ Dashboard Iklim Wilayah Pesisir Pulau Sumatera"
-)
-
-st.markdown(
-    """
-    **Machine Learning untuk Memprediksi Perubahan Iklim
-    Wilayah Pesisir Pantai Pulau Sumatera**
-
-    Analisis Temporal Jangka Panjang Berbasis
-    **Random Forest (1985–2025)**
-    """
-)
-
-
-# ============================================================
-# FUNGSI MEMBACA EXCEL
+# BACA EXCEL
 # ============================================================
 
 @st.cache_data
@@ -96,24 +256,17 @@ def load_excel(file_path):
         header=None
     )
 
-    required_columns = [
-        "YEAR",
-        "DOY",
-        "TN",
-        "TX",
-        "TAVG",
-        "RH_AVG",
-        "RR",
-        "SS",
-        "FF_X",
-        "FF_AVG"
+    required = [
+        "YEAR", "DOY", "TN", "TX",
+        "TAVG", "RH_AVG", "RR",
+        "SS", "FF_X", "FF_AVG"
     ]
 
     header_row = None
 
     for i in range(min(40, len(raw))):
 
-        row_values = (
+        row = (
             raw.iloc[i]
             .astype(str)
             .str.strip()
@@ -122,15 +275,12 @@ def load_excel(file_path):
         )
 
         matches = sum(
-            1
-            for col in required_columns
-            if col in row_values
+            col in row
+            for col in required
         )
 
         if matches >= 5:
-
             header_row = i
-
             break
 
     if header_row is not None:
@@ -157,14 +307,13 @@ def load_excel(file_path):
 
 
 # ============================================================
-# MEMBUAT TANGGAL
+# BUAT TANGGAL
 # ============================================================
 
-def create_date_column(df):
+def create_date(df):
 
     df = df.copy()
 
-    # DATE
     if "DATE" in df.columns:
 
         df["DATE"] = pd.to_datetime(
@@ -174,7 +323,6 @@ def create_date_column(df):
 
         return df
 
-    # TANGGAL
     if "TANGGAL" in df.columns:
 
         df["DATE"] = pd.to_datetime(
@@ -184,7 +332,6 @@ def create_date_column(df):
 
         return df
 
-    # YEAR + DOY
     if "YEAR" in df.columns and "DOY" in df.columns:
 
         year = pd.to_numeric(
@@ -220,22 +367,20 @@ def create_date_column(df):
             )
         )
 
-        return df
+    else:
 
-    df["DATE"] = pd.NaT
+        df["DATE"] = pd.NaT
 
     return df
 
 
 # ============================================================
-# MEMBERSIHKAN DATA
+# CLEANING
 # ============================================================
 
 def clean_data(df):
 
-    df = df.copy()
-
-    df = create_date_column(df)
+    df = create_date(df)
 
     for col in PARAMETER_INFO:
 
@@ -250,18 +395,16 @@ def clean_data(df):
         subset=["DATE"]
     )
 
-    df = df.sort_values(
+    return df.sort_values(
         "DATE"
     )
 
-    return df
-
 
 # ============================================================
-# AGREGASI BULANAN
+# DATA BULANAN
 # ============================================================
 
-def monthly_aggregation(df):
+def monthly_data(df):
 
     df = df.copy()
 
@@ -271,9 +414,8 @@ def monthly_aggregation(df):
         .dt.to_timestamp()
     )
 
-    aggregation = {}
+    agg = {}
 
-    # Temperatur
     for col in [
         "TN",
         "TX",
@@ -284,49 +426,34 @@ def monthly_aggregation(df):
     ]:
 
         if col in df.columns:
+            agg[col] = "mean"
 
-            aggregation[col] = "mean"
-
-    # Curah hujan
     if "RR" in df.columns:
+        agg["RR"] = "sum"
 
-        aggregation["RR"] = "sum"
-
-    # Penyinaran matahari
     if "SS" in df.columns:
+        agg["SS"] = "sum"
 
-        aggregation["SS"] = "sum"
-
-    monthly = (
+    return (
         df.groupby("MONTH")
-        .agg(aggregation)
+        .agg(agg)
         .reset_index()
+        .sort_values("MONTH")
     )
-
-    monthly = monthly.sort_values(
-        "MONTH"
-    )
-
-    return monthly
 
 
 # ============================================================
 # FEATURE ENGINEERING
 # ============================================================
 
-def create_features(monthly, target):
+def create_features(df, target):
 
-    data = monthly[
-        [
-            "MONTH",
-            target
-        ]
+    data = df[
+        ["MONTH", target]
     ].copy()
 
     data["lag1"] = data[target].shift(1)
-
     data["lag2"] = data[target].shift(2)
-
     data["lag3"] = data[target].shift(3)
 
     data["rolling_mean_3"] = (
@@ -336,37 +463,31 @@ def create_features(monthly, target):
         .mean()
     )
 
-    data["month_number"] = (
-        data["MONTH"].dt.month
-    )
+    month = data["MONTH"].dt.month
 
     data["month_sin"] = np.sin(
-        2 * np.pi *
-        data["month_number"] / 12
+        2 * np.pi * month / 12
     )
 
     data["month_cos"] = np.cos(
-        2 * np.pi *
-        data["month_number"] / 12
+        2 * np.pi * month / 12
     )
 
-    data = data.dropna()
-
-    return data
+    return data.dropna()
 
 
 # ============================================================
-# MEMBUAT MODEL
+# RANDOM FOREST
 # ============================================================
 
-def train_random_forest(monthly, target):
+def train_model(monthly, target):
 
     data = create_features(
         monthly,
         target
     )
 
-    feature_columns = [
+    features = [
         "lag1",
         "lag2",
         "lag3",
@@ -375,53 +496,33 @@ def train_random_forest(monthly, target):
         "month_cos"
     ]
 
-    X = data[
-        feature_columns
-    ].values
+    X = data[features].values
+    y = data[[target]].values
 
-    y = data[
-        [target]
-    ].values
-
-    # --------------------------------------------------------
-    # Split time series 80 : 20
-    # --------------------------------------------------------
-
-    split_index = int(
+    split = int(
         len(data) * TRAIN_RATIO
     )
 
-    X_train = X[:split_index]
+    X_train = X[:split]
+    X_test = X[split:]
 
-    X_test = X[split_index:]
+    y_train = y[:split]
+    y_test = y[split:]
 
-    y_train = y[:split_index]
-
-    y_test = y[split_index:]
-
-    # --------------------------------------------------------
-    # Scaling
-    # --------------------------------------------------------
-
-    scaler_X = MinMaxScaler()
-
+    scaler_x = MinMaxScaler()
     scaler_y = MinMaxScaler()
 
-    X_train_scaled = scaler_X.fit_transform(
+    X_train_s = scaler_x.fit_transform(
         X_train
     )
 
-    X_test_scaled = scaler_X.transform(
+    X_test_s = scaler_x.transform(
         X_test
     )
 
-    y_train_scaled = scaler_y.fit_transform(
+    y_train_s = scaler_y.fit_transform(
         y_train
     ).ravel()
-
-    # --------------------------------------------------------
-    # Random Forest
-    # --------------------------------------------------------
 
     model = RandomForestRegressor(
         n_estimators=N_ESTIMATORS,
@@ -432,271 +533,223 @@ def train_random_forest(monthly, target):
     )
 
     model.fit(
-        X_train_scaled,
-        y_train_scaled
+        X_train_s,
+        y_train_s
     )
 
-    # --------------------------------------------------------
-    # Prediksi test
-    # --------------------------------------------------------
-
-    y_pred_scaled = model.predict(
-        X_test_scaled
+    pred_s = model.predict(
+        X_test_s
     )
 
-    y_pred = scaler_y.inverse_transform(
-        y_pred_scaled.reshape(-1, 1)
+    pred = scaler_y.inverse_transform(
+        pred_s.reshape(-1, 1)
     ).ravel()
 
-    y_test_original = y_test.ravel()
-
-    # --------------------------------------------------------
-    # Evaluasi
-    # --------------------------------------------------------
+    actual = y_test.ravel()
 
     rmse = np.sqrt(
         mean_squared_error(
-            y_test_original,
-            y_pred
+            actual,
+            pred
         )
     )
 
     mae = mean_absolute_error(
-        y_test_original,
-        y_pred
+        actual,
+        pred
     )
 
     r2 = r2_score(
-        y_test_original,
-        y_pred
+        actual,
+        pred
     )
 
-    evaluation = {
-        "RMSE": rmse,
-        "MAE": mae,
-        "R2": r2
-    }
-
-    # --------------------------------------------------------
-    # Data aktual vs prediksi
-    # --------------------------------------------------------
-
-    evaluation_data = data.iloc[
-        split_index:
-    ].copy()
-
-    evaluation_data["Actual"] = (
-        y_test_original
-    )
-
-    evaluation_data["Predicted"] = (
-        y_pred
-    )
+    evaluation = pd.DataFrame({
+        "MONTH": data.iloc[split:]["MONTH"].values,
+        "Aktual": actual,
+        "Prediksi": pred
+    })
 
     return (
         model,
-        scaler_X,
+        scaler_x,
         scaler_y,
-        evaluation,
-        evaluation_data,
-        feature_columns
+        features,
+        {
+            "RMSE": rmse,
+            "MAE": mae,
+            "R2": r2
+        },
+        evaluation
     )
 
 
 # ============================================================
-# FORECAST 2026–2055
+# FORECAST
 # ============================================================
 
-def forecast_future(
+def make_forecast(
     monthly,
     target,
     model,
-    scaler_X,
-    scaler_y,
-    months=360
+    scaler_x,
+    scaler_y
 ):
 
     history = monthly[
-        [
-            "MONTH",
-            target
-        ]
+        ["MONTH", target]
     ].dropna().copy()
 
-    history = history.sort_values(
-        "MONTH"
-    )
+    values = history[target].tolist()
 
-    values = (
-        history[target]
-        .astype(float)
-        .tolist()
-    )
+    last_month = history["MONTH"].max()
 
-    last_month = (
-        history["MONTH"]
-        .max()
-    )
-
-    future_dates = pd.date_range(
+    dates = pd.date_range(
         start=last_month + pd.offsets.MonthBegin(1),
-        periods=months,
+        periods=FORECAST_MONTHS,
         freq="MS"
     )
 
     predictions = []
 
-    for date in future_dates:
+    for date in dates:
 
         lag1 = values[-1]
-
         lag2 = values[-2]
-
         lag3 = values[-3]
 
-        rolling_mean_3 = np.mean(
+        rolling = np.mean(
             values[-3:]
         )
 
-        month_number = date.month
+        month = date.month
 
-        month_sin = np.sin(
-            2 * np.pi *
-            month_number / 12
+        sin_month = np.sin(
+            2 * np.pi * month / 12
         )
 
-        month_cos = np.cos(
-            2 * np.pi *
-            month_number / 12
+        cos_month = np.cos(
+            2 * np.pi * month / 12
         )
 
-        X_future = np.array(
-            [
-                [
-                    lag1,
-                    lag2,
-                    lag3,
-                    rolling_mean_3,
-                    month_sin,
-                    month_cos
-                ]
-            ]
-        )
+        X = np.array([[
+            lag1,
+            lag2,
+            lag3,
+            rolling,
+            sin_month,
+            cos_month
+        ]])
 
-        X_future_scaled = scaler_X.transform(
-            X_future
-        )
+        X_s = scaler_x.transform(X)
 
-        pred_scaled = model.predict(
-            X_future_scaled
-        )
+        pred_s = model.predict(X_s)
 
-        prediction = scaler_y.inverse_transform(
-            pred_scaled.reshape(-1, 1)
+        pred = scaler_y.inverse_transform(
+            pred_s.reshape(-1, 1)
         )[0, 0]
 
-        predictions.append(
-            prediction
-        )
+        predictions.append(pred)
 
-        values.append(
-            prediction
-        )
+        values.append(pred)
 
-    forecast = pd.DataFrame(
-        {
-            "MONTH": future_dates,
-            target: predictions
-        }
-    )
-
-    return forecast
-
-
-# ============================================================
-# FORECAST TAHUNAN
-# ============================================================
-
-def annual_forecast(forecast, target):
-
-    data = forecast.copy()
-
-    data["YEAR"] = (
-        data["MONTH"].dt.year
-    )
-
-    # RR dan SS merupakan akumulasi
-    if target in ["RR", "SS"]:
-
-        annual = (
-            data.groupby("YEAR")[target]
-            .sum()
-            .reset_index()
-        )
-
-    else:
-
-        annual = (
-            data.groupby("YEAR")[target]
-            .mean()
-            .reset_index()
-        )
-
-    return annual
+    return pd.DataFrame({
+        "MONTH": dates,
+        target: predictions
+    })
 
 
 # ============================================================
 # SIDEBAR
 # ============================================================
 
-st.sidebar.header(
-    "⚙️ Pengaturan"
+st.sidebar.markdown(
+    '<div class="sidebar-title">📌 Menu Navigasi</div>',
+    unsafe_allow_html=True
+)
+
+page = st.sidebar.radio(
+    "Pilih Tampilan:",
+    [
+        "🏠 Dashboard",
+        "📊 Validasi & Evaluasi",
+        "👤 Profil Peneliti"
+    ],
+    label_visibility="visible"
 )
 
 
+st.sidebar.markdown("---")
+
+
+# ============================================================
+# WILAYAH
+# ============================================================
+
+st.sidebar.markdown(
+    '<div class="sidebar-section">🌍 Wilayah Pesisir</div>',
+    unsafe_allow_html=True
+)
+
 station = st.sidebar.selectbox(
-    "Pilih Stasiun",
+    "Pilih wilayah:",
     list(DATASETS.keys())
 )
 
 
-start_date = st.sidebar.date_input(
-    "Tanggal Awal",
-    value=pd.Timestamp(
-        "1985-01-01"
-    ).date()
+# ============================================================
+# RENTANG WAKTU
+# ============================================================
+
+st.sidebar.markdown(
+    '<div class="sidebar-section">📅 Rentang Waktu</div>',
+    unsafe_allow_html=True
+)
+
+years = list(range(1985, 2026))
+
+start_year = st.sidebar.selectbox(
+    "Mulai",
+    years,
+    index=0
+)
+
+end_year = st.sidebar.selectbox(
+    "Selesai",
+    years,
+    index=len(years) - 1
 )
 
 
-end_date = st.sidebar.date_input(
-    "Tanggal Akhir",
-    value=pd.Timestamp(
-        "2025-12-31"
-    ).date()
+# ============================================================
+# PARAMETER
+# ============================================================
+
+st.sidebar.markdown(
+    '<div class="sidebar-section">⚙️ Parameter Iklim</div>',
+    unsafe_allow_html=True
 )
 
+parameter_options = [
+    f"{key} — {value}"
+    for key, value in PARAMETER_INFO.items()
+]
+
+parameter_selected = st.sidebar.selectbox(
+    "Pilih Parameter:",
+    parameter_options
+)
+
+parameter = parameter_selected.split(" — ")[0]
+
 
 # ============================================================
-# VALIDASI TANGGAL
-# ============================================================
-
-if start_date >= end_date:
-
-    st.error(
-        "Tanggal awal harus lebih kecil dari tanggal akhir."
-    )
-
-    st.stop()
-
-
-# ============================================================
-# BACA DATA
+# LOAD DATA
 # ============================================================
 
 file_path = Path(
     DATASETS[station]
 )
-
 
 if not file_path.exists():
 
@@ -707,797 +760,644 @@ if not file_path.exists():
     st.stop()
 
 
-with st.spinner(
-    "Membaca dataset..."
-):
+with st.spinner("Memuat data..."):
 
-    df_raw = load_excel(
+    raw = load_excel(
         file_path
     )
 
-
-# ============================================================
-# CLEANING
-# ============================================================
-
-df = clean_data(
-    df_raw
-)
+    daily = clean_data(
+        raw
+    )
 
 
-df = df[
-    (df["DATE"] >= pd.Timestamp(start_date))
+daily = daily[
+    (daily["DATE"] >= pd.Timestamp(
+        f"{start_year}-01-01"
+    ))
     &
-    (df["DATE"] <= pd.Timestamp(end_date))
+    (daily["DATE"] <= pd.Timestamp(
+        f"{end_year}-12-31"
+    ))
 ].copy()
 
 
-if df.empty:
+monthly = monthly_data(
+    daily
+)
+
+
+if parameter not in monthly.columns:
 
     st.error(
-        "Tidak ada data pada rentang tanggal tersebut."
+        f"Parameter {parameter} tidak tersedia pada dataset."
     )
 
     st.stop()
 
 
 # ============================================================
-# DATA BULANAN
+# HEADER UTAMA
 # ============================================================
 
-df_monthly = monthly_aggregation(
-    df
-)
+st.markdown(
+    """
+    <div class="main-title">
+    🌦️ DASHBOARD MACHINE LEARNING UNTUK MEMPREDIKSI<br>
+    PERUBAHAN IKLIM WILAYAH PESISIR PANTAI PULAU SUMATERA
+    </div>
 
+    <div class="subtitle">
+    Analisis Temporal Jangka Panjang Berbasis Random Forest — 1985–2025
+    </div>
 
-available_parameters = [
-    col
-    for col in PARAMETER_INFO
-    if col in df_monthly.columns
-]
-
-
-if not available_parameters:
-
-    st.error(
-        "Parameter iklim tidak ditemukan."
-    )
-
-    st.stop()
-
-
-# ============================================================
-# INFORMASI DATA
-# ============================================================
-
-st.success(
-    f"Dataset **{station}** berhasil diproses."
-)
-
-
-c1, c2, c3, c4 = st.columns(4)
-
-
-with c1:
-
-    st.metric(
-        "Data Harian",
-        f"{len(df):,}"
-    )
-
-
-with c2:
-
-    st.metric(
-        "Data Bulanan",
-        f"{len(df_monthly):,}"
-    )
-
-
-with c3:
-
-    st.metric(
-        "Periode Awal",
-        df_monthly["MONTH"]
-        .min()
-        .strftime("%Y-%m")
-    )
-
-
-with c4:
-
-    st.metric(
-        "Periode Akhir",
-        df_monthly["MONTH"]
-        .max()
-        .strftime("%Y-%m")
-    )
-
-
-# ============================================================
-# MENU TAB
-# ============================================================
-
-tab1, tab2, tab3, tab4, tab5 = st.tabs(
-    [
-        "📊 Dashboard",
-        "🤖 Random Forest",
-        "📈 Evaluasi",
-        "🔮 Forecast 2026–2055",
-        "📋 Data"
-    ]
+    <div class="blue-line"></div>
+    """,
+    unsafe_allow_html=True
 )
 
 
 # ============================================================
-# TAB 1 — DASHBOARD
+# DASHBOARD
 # ============================================================
 
-with tab1:
+if page == "🏠 Dashboard":
 
-    st.subheader(
-        "📊 Data Iklim Bulanan"
-    )
+    # --------------------------------------------------------
+    # PROFIL RINGKAS
+    # --------------------------------------------------------
 
-    parameter_dashboard = st.selectbox(
-        "Pilih Parameter",
-        available_parameters,
-        format_func=lambda x:
-            f"{x} — {PARAMETER_INFO[x]}",
-        key="dashboard_parameter"
-    )
-
-
-    chart_data = df_monthly[
-        [
-            "MONTH",
-            parameter_dashboard
-        ]
-    ].dropna()
-
-
-    fig = px.line(
-        chart_data,
-        x="MONTH",
-        y=parameter_dashboard,
-        title=(
-            f"{PARAMETER_INFO[parameter_dashboard]} "
-            f"— {station}"
-        )
-    )
-
-
-    fig.update_layout(
-        xaxis_title="Waktu",
-        yaxis_title=parameter_dashboard,
-        hovermode="x unified"
-    )
-
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
-
-
-    # Statistik
-    st.subheader(
-        "📌 Statistik Deskriptif"
-    )
-
-
-    stats = chart_data[
-        parameter_dashboard
-    ].describe()
-
-
-    s1, s2, s3, s4 = st.columns(4)
-
-
-    with s1:
-
-        st.metric(
-            "Rata-rata",
-            f"{stats['mean']:.2f}"
-        )
-
-
-    with s2:
-
-        st.metric(
-            "Minimum",
-            f"{stats['min']:.2f}"
-        )
-
-
-    with s3:
-
-        st.metric(
-            "Maksimum",
-            f"{stats['max']:.2f}"
-        )
-
-
-    with s4:
-
-        st.metric(
-            "Std. Deviasi",
-            f"{stats['std']:.2f}"
-        )
-
-
-# ============================================================
-# TAB 2 — RANDOM FOREST
-# ============================================================
-
-with tab2:
-
-    st.subheader(
-        "🤖 Pemodelan Random Forest"
-    )
-
-    st.write(
+    st.markdown(
         """
-        Model Random Forest digunakan untuk mempelajari
-        pola temporal data iklim bulanan periode 1985–2025.
-        """
+        <div class="profile-box">
+
+        <div class="section-title">
+        👤 Profil Peneliti & Akademik
+        </div>
+
+        <div class="profile-item">
+        <b>Nama Peneliti:</b> Huriyatul Firdausi
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        <b>Dosen Pembimbing:</b> Dr. Melly Ariska, S.Pd., M.Sc.
+        </div>
+
+        <div class="profile-item">
+        <b>NIM:</b> 06111382328074
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        <b>Universitas:</b> Universitas Sriwijaya
+        </div>
+
+        <div class="profile-item">
+        <b>Program Studi:</b> Pendidikan Fisika
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        <b>Tahun:</b> 2026
+        </div>
+
+        <div class="profile-item">
+        <b>Fakultas:</b> Keguruan dan Ilmu Pendidikan
+        </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+    # --------------------------------------------------------
+    # METRIC CARDS
+    # --------------------------------------------------------
+
+    c1, c2, c3, c4 = st.columns(4)
+
+
+    with c1:
+
+        st.markdown(
+            f"""
+            <div class="metric-card metric-blue">
+            <div class="metric-label">🗄️ Data Harian</div>
+            <div class="metric-value">
+            {len(daily):,}
+            </div>
+            <div class="metric-unit">baris</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+
+    with c2:
+
+        st.markdown(
+            f"""
+            <div class="metric-card metric-green">
+            <div class="metric-label">📅 Data Bulanan</div>
+            <div class="metric-value">
+            {len(monthly):,}
+            </div>
+            <div class="metric-unit">bulan</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+
+    with c3:
+
+        st.markdown(
+            f"""
+            <div class="metric-card metric-yellow">
+            <div class="metric-label">🗓️ Periode Awal</div>
+            <div class="metric-value">
+            {monthly["MONTH"].min().strftime("%Y-%m")}
+            </div>
+            <div class="metric-unit">
+            Tahun-Bulan
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+
+    with c4:
+
+        st.markdown(
+            f"""
+            <div class="metric-card metric-red">
+            <div class="metric-label">🗓️ Periode Akhir</div>
+            <div class="metric-value">
+            {monthly["MONTH"].max().strftime("%Y-%m")}
+            </div>
+            <div class="metric-unit">
+            Tahun-Bulan
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+
+    # --------------------------------------------------------
+    # GRAFIK + STATISTIK
+    # --------------------------------------------------------
+
+    left, right = st.columns(
+        [2.5, 1]
+    )
+
+
+    with left:
+
+        st.markdown(
+            '<div class="section-title">📊 Visualisasi Data Iklim Bulanan</div>',
+            unsafe_allow_html=True
+        )
+
+        chart = monthly[
+            [
+                "MONTH",
+                parameter
+            ]
+        ].dropna()
+
+
+        fig = px.line(
+            chart,
+            x="MONTH",
+            y=parameter,
+            title=(
+                f"{PARAMETER_INFO[parameter]} Bulanan — "
+                f"{station}"
+            )
+        )
+
+
+        fig.update_layout(
+            height=430,
+            margin=dict(
+                l=20,
+                r=20,
+                t=55,
+                b=20
+            ),
+            xaxis_title="Waktu",
+            yaxis_title=parameter,
+            hovermode="x unified"
+        )
+
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
+
+
+    with right:
+
+        st.markdown(
+            '<div class="section-title">📈 Statistik Deskriptif</div>',
+            unsafe_allow_html=True
+        )
+
+        values = monthly[
+            parameter
+        ].dropna()
+
+
+        stats_table = pd.DataFrame({
+            "Statistik": [
+                "Rata-rata",
+                "Minimum",
+                "Maksimum",
+                "Standar Deviasi",
+                "Jumlah Data"
+            ],
+            "Nilai": [
+                round(values.mean(), 2),
+                round(values.min(), 2),
+                round(values.max(), 2),
+                round(values.std(), 2),
+                len(values)
+            ]
+        })
+
+
+        st.dataframe(
+            stats_table,
+            use_container_width=True,
+            hide_index=True,
+            height=245
+        )
+
+
+    # --------------------------------------------------------
+    # DATA BULANAN
+    # --------------------------------------------------------
+
+    st.markdown(
+        '<div class="section-title">📋 Data Bulanan</div>',
+        unsafe_allow_html=True
+    )
+
+    display_monthly = monthly.copy()
+
+    display_monthly["MONTH"] = (
+        display_monthly["MONTH"]
+        .dt.strftime("%Y-%m")
+    )
+
+
+    st.dataframe(
+        display_monthly,
+        use_container_width=True,
+        height=350
+    )
+
+
+    # --------------------------------------------------------
+    # RANDOM FOREST
+    # --------------------------------------------------------
+
+    st.markdown(
+        '<div class="section-title">🤖 Analisis Random Forest</div>',
+        unsafe_allow_html=True
     )
 
 
     st.info(
-        """
-        **Feature Engineering**
+        f"""
+        Parameter yang dipilih: **{parameter} — {PARAMETER_INFO[parameter]}**
 
-        • Lag 1 bulan  
-        • Lag 2 bulan  
-        • Lag 3 bulan  
-        • Rolling Mean 3 bulan  
-        • Month Sin  
-        • Month Cos
+        Model menggunakan lag 1, 2, 3 bulan, rolling mean 3 bulan,
+        serta fitur siklus bulan. Pembagian data dilakukan secara
+        temporal dengan **80% data training dan 20% data testing**.
         """
     )
 
 
-    parameter_model = st.selectbox(
-        "Pilih Parameter untuk Pemodelan",
-        available_parameters,
-        format_func=lambda x:
-            f"{x} — {PARAMETER_INFO[x]}",
-        key="model_parameter"
-    )
-
-
-    st.write(
-        "**Konfigurasi Random Forest**"
-    )
-
-
-    config1, config2, config3, config4 = st.columns(4)
-
-
-    with config1:
-
-        st.metric(
-            "Jumlah Trees",
-            N_ESTIMATORS
-        )
-
-
-    with config2:
-
-        st.metric(
-            "Max Depth",
-            MAX_DEPTH
-        )
-
-
-    with config3:
-
-        st.metric(
-            "Train",
-            "80%"
-        )
-
-
-    with config4:
-
-        st.metric(
-            "Test",
-            "20%"
-        )
-
-
-    train_button = st.button(
-        "🚀 Jalankan Random Forest",
+    if st.button(
+        "▶ Jalankan Analisis Random Forest",
         type="primary"
-    )
-
-
-    if train_button:
+    ):
 
         with st.spinner(
-            f"Melatih Random Forest untuk {parameter_model}..."
+            "Sedang melatih Random Forest..."
         ):
 
             (
                 model,
-                scaler_X,
+                scaler_x,
                 scaler_y,
-                evaluation,
-                evaluation_data,
-                feature_columns
-            ) = train_random_forest(
-                df_monthly,
-                parameter_model
+                features,
+                metrics,
+                evaluation
+            ) = train_model(
+                monthly,
+                parameter
             )
 
 
-            forecast = forecast_future(
-                df_monthly,
-                parameter_model,
+            forecast = make_forecast(
+                monthly,
+                parameter,
                 model,
-                scaler_X,
-                scaler_y,
-                FORECAST_MONTHS
+                scaler_x,
+                scaler_y
             )
 
 
-        # Menyimpan hasil ke session
-        st.session_state[
-            "model_result"
-        ] = {
-
+        st.session_state["result"] = {
             "station": station,
-
-            "parameter": parameter_model,
-
-            "model": model,
-
-            "scaler_X": scaler_X,
-
-            "scaler_y": scaler_y,
-
+            "parameter": parameter,
+            "metrics": metrics,
             "evaluation": evaluation,
-
-            "evaluation_data": evaluation_data,
-
             "forecast": forecast,
-
-            "feature_columns": feature_columns
+            "features": features
         }
 
 
         st.success(
-            f"Model Random Forest {parameter_model} selesai dilatih."
+            "Analisis Random Forest berhasil dijalankan."
         )
 
 
     # --------------------------------------------------------
-    # HASIL MODEL
+    # FORECAST
     # --------------------------------------------------------
 
-    if "model_result" in st.session_state:
+    if "result" in st.session_state:
 
-        result = st.session_state[
-            "model_result"
-        ]
-
+        result = st.session_state["result"]
 
         if (
             result["station"] == station
             and
-            result["parameter"] == parameter_model
+            result["parameter"] == parameter
         ):
 
-            st.success(
-                "Hasil model tersedia."
+            st.markdown(
+                '<div class="section-title">🔮 Forecast 2026–2055</div>',
+                unsafe_allow_html=True
             )
 
 
-            st.write(
-                "**Feature yang digunakan:**"
-            )
+            forecast = result["forecast"]
 
-            st.code(
-                ", ".join(
-                    result["feature_columns"]
+
+            fig_future = px.line(
+                forecast,
+                x="MONTH",
+                y=parameter,
+                title=(
+                    f"Prediksi {PARAMETER_INFO[parameter]} "
+                    f"2026–2055"
                 )
             )
 
 
-            evaluation = result[
-                "evaluation"
-            ]
+            fig_future.update_layout(
+                height=420,
+                xaxis_title="Tahun",
+                yaxis_title=parameter,
+                hovermode="x unified"
+            )
 
 
-            e1, e2, e3 = st.columns(3)
+            st.plotly_chart(
+                fig_future,
+                use_container_width=True
+            )
 
 
-            with e1:
-
-                st.metric(
-                    "RMSE",
-                    f"{evaluation['RMSE']:.4f}"
-                )
-
-
-            with e2:
-
-                st.metric(
-                    "MAE",
-                    f"{evaluation['MAE']:.4f}"
-                )
-
-
-            with e3:
-
-                st.metric(
-                    "R²",
-                    f"{evaluation['R2']:.4f}"
-                )
-
-
-        else:
-
-            st.info(
-                "Klik tombol Random Forest untuk melatih parameter yang dipilih."
+            st.dataframe(
+                forecast,
+                use_container_width=True,
+                height=300
             )
 
 
 # ============================================================
-# TAB 3 — EVALUASI
+# VALIDASI & EVALUASI
 # ============================================================
 
-with tab3:
+elif page == "📊 Validasi & Evaluasi":
 
-    st.subheader(
-        "📈 Validasi dan Evaluasi Model"
+    st.markdown(
+        '<div class="section-title">📊 Validasi & Evaluasi Model</div>',
+        unsafe_allow_html=True
     )
 
 
-    if "model_result" not in st.session_state:
+    if "result" not in st.session_state:
 
         st.info(
             """
-            Belum ada model yang dijalankan.
+            Model belum dijalankan.
 
-            Masuk ke tab **🤖 Random Forest**, pilih parameter,
-            kemudian klik **Jalankan Random Forest**.
+            Silakan kembali ke **Dashboard**, pilih parameter,
+            kemudian klik **Jalankan Analisis Random Forest**.
             """
         )
 
     else:
 
-        result = st.session_state[
-            "model_result"
-        ]
+        result = st.session_state["result"]
 
 
         if result["station"] != station:
 
-            st.info(
-                "Hasil model yang tersedia berasal dari stasiun lain."
+            st.warning(
+                "Hasil model yang tersedia berasal dari stasiun berbeda."
             )
 
         else:
+
+            metrics = result["metrics"]
+
+
+            c1, c2, c3 = st.columns(3)
+
+
+            with c1:
+
+                st.metric(
+                    "RMSE",
+                    f"{metrics['RMSE']:.4f}"
+                )
+
+
+            with c2:
+
+                st.metric(
+                    "MAE",
+                    f"{metrics['MAE']:.4f}"
+                )
+
+
+            with c3:
+
+                st.metric(
+                    "R²",
+                    f"{metrics['R2']:.4f}"
+                )
+
+
+            st.markdown(
+                '<div class="section-title">📈 Aktual vs Prediksi</div>',
+                unsafe_allow_html=True
+            )
+
 
             evaluation = result[
                 "evaluation"
             ]
 
-            evaluation_data = result[
-                "evaluation_data"
-            ].copy()
 
-
-            st.write(
-                f"### {result['parameter']} — {station}"
-            )
-
-
-            a1, a2, a3 = st.columns(3)
-
-
-            with a1:
-
-                st.metric(
-                    "RMSE",
-                    f"{evaluation['RMSE']:.4f}"
-                )
-
-
-            with a2:
-
-                st.metric(
-                    "MAE",
-                    f"{evaluation['MAE']:.4f}"
-                )
-
-
-            with a3:
-
-                st.metric(
-                    "R²",
-                    f"{evaluation['R2']:.4f}"
-                )
-
-
-            # ------------------------------------------------
-            # Grafik aktual vs prediksi
-            # ------------------------------------------------
-
-            plot_eval = evaluation_data[
-                [
-                    "MONTH",
-                    "Actual",
-                    "Predicted"
-                ]
-            ].copy()
-
-
-            plot_long = plot_eval.melt(
+            long_eval = evaluation.melt(
                 id_vars="MONTH",
                 value_vars=[
-                    "Actual",
-                    "Predicted"
+                    "Aktual",
+                    "Prediksi"
                 ],
                 var_name="Jenis",
                 value_name="Nilai"
             )
 
 
-            fig_eval = px.line(
-                plot_long,
+            fig = px.line(
+                long_eval,
                 x="MONTH",
                 y="Nilai",
                 color="Jenis",
-                title="Aktual vs Prediksi Data Uji"
-            )
-
-
-            fig_eval.update_layout(
-                xaxis_title="Waktu",
-                yaxis_title=result["parameter"],
-                hovermode="x unified"
-            )
-
-
-            st.plotly_chart(
-                fig_eval,
-                use_container_width=True
-            )
-
-
-            # ------------------------------------------------
-            # Tabel
-            # ------------------------------------------------
-
-            st.subheader(
-                "📋 Data Aktual dan Prediksi"
-            )
-
-
-            st.dataframe(
-                evaluation_data[
-                    [
-                        "MONTH",
-                        "Actual",
-                        "Predicted"
-                    ]
-                ],
-                use_container_width=True
-            )
-
-
-# ============================================================
-# TAB 4 — FORECAST
-# ============================================================
-
-with tab4:
-
-    st.subheader(
-        "🔮 Prediksi Iklim 2026–2055"
-    )
-
-
-    if "model_result" not in st.session_state:
-
-        st.info(
-            "Jalankan model terlebih dahulu pada tab Random Forest."
-        )
-
-    else:
-
-        result = st.session_state[
-            "model_result"
-        ]
-
-
-        if result["station"] != station:
-
-            st.info(
-                "Model yang tersedia berasal dari stasiun lain."
-            )
-
-        else:
-
-            forecast = result[
-                "forecast"
-            ].copy()
-
-
-            target = result[
-                "parameter"
-            ]
-
-
-            st.success(
-                f"Forecast {target} untuk "
-                f"{station} tersedia sebanyak "
-                f"{len(forecast)} bulan."
-            )
-
-
-            # ------------------------------------------------
-            # Grafik forecast
-            # ------------------------------------------------
-
-            fig_forecast = px.line(
-                forecast,
-                x="MONTH",
-                y=target,
                 title=(
-                    f"Forecast {PARAMETER_INFO[target]} "
-                    f"2026–2055"
+                    f"Aktual vs Prediksi — "
+                    f"{result['parameter']}"
                 )
             )
 
 
-            fig_forecast.update_layout(
-                xaxis_title="Tahun",
-                yaxis_title=target,
+            fig.update_layout(
+                height=450,
                 hovermode="x unified"
             )
 
 
             st.plotly_chart(
-                fig_forecast,
+                fig,
                 use_container_width=True
             )
 
 
-            # ------------------------------------------------
-            # Forecast tahunan
-            # ------------------------------------------------
-
-            st.subheader(
-                "📅 Forecast Tahunan"
-            )
-
-
-            annual = annual_forecast(
-                forecast,
-                target
+            st.markdown(
+                '<div class="section-title">📋 Detail Evaluasi</div>',
+                unsafe_allow_html=True
             )
 
 
             st.dataframe(
-                annual,
-                use_container_width=True
-            )
-
-
-            # ------------------------------------------------
-            # Download
-            # ------------------------------------------------
-
-            csv_forecast = forecast.copy()
-
-            csv_forecast["MONTH"] = (
-                csv_forecast["MONTH"]
-                .dt.strftime("%Y-%m-%d")
-            )
-
-
-            csv_bytes = (
-                csv_forecast
-                .to_csv(index=False)
-                .encode("utf-8")
-            )
-
-
-            st.download_button(
-                "📥 Download Forecast Bulanan CSV",
-                data=csv_bytes,
-                file_name=(
-                    station.lower()
-                    .replace(" ", "_")
-                    + "_"
-                    + target.lower()
-                    + "_forecast_2026_2055.csv"
-                ),
-                mime="text/csv"
-            )
-
-
-            csv_annual = (
-                annual
-                .to_csv(index=False)
-                .encode("utf-8")
-            )
-
-
-            st.download_button(
-                "📥 Download Forecast Tahunan CSV",
-                data=csv_annual,
-                file_name=(
-                    station.lower()
-                    .replace(" ", "_")
-                    + "_"
-                    + target.lower()
-                    + "_forecast_tahunan_2026_2055.csv"
-                ),
-                mime="text/csv"
+                evaluation,
+                use_container_width=True,
+                height=400
             )
 
 
 # ============================================================
-# TAB 5 — DATA
+# PROFIL PENELITI
 # ============================================================
 
-with tab5:
+elif page == "👤 Profil Peneliti":
 
-    st.subheader(
-        "📋 Data Bulanan 1985–2025"
+    st.markdown(
+        '<div class="section-title">👤 Profil Peneliti & Akademik</div>',
+        unsafe_allow_html=True
     )
 
 
-    display_data = df_monthly.copy()
+    st.markdown(
+        """
+        <div class="profile-box">
 
+        <div class="profile-item">
+        <b>Nama Peneliti:</b> Huriyatul Firdausi
+        </div>
 
-    display_data["MONTH"] = (
-        display_data["MONTH"]
-        .dt.strftime("%Y-%m")
+        <div class="profile-item">
+        <b>NIM:</b> 06111382328074
+        </div>
+
+        <div class="profile-item">
+        <b>Dosen Pembimbing:</b> Dr. Melly Ariska, S.Pd., M.Sc.
+        </div>
+
+        <div class="profile-item">
+        <b>Program Studi:</b> Pendidikan Fisika
+        </div>
+
+        <div class="profile-item">
+        <b>Fakultas:</b> Keguruan dan Ilmu Pendidikan
+        </div>
+
+        <div class="profile-item">
+        <b>Universitas:</b> Universitas Sriwijaya
+        </div>
+
+        <div class="profile-item">
+        <b>Tahun:</b> 2026
+        </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True
     )
+
+
+    st.markdown(
+        '<div class="section-title">📚 Judul Penelitian</div>',
+        unsafe_allow_html=True
+    )
+
+
+    st.info(
+        """
+        **MACHINE LEARNING UNTUK MEMPREDIKSI PERUBAHAN IKLIM
+        WILAYAH PESISIR PANTAI PULAU SUMATERA**
+        """
+    )
+
+
+    st.markdown(
+        '<div class="section-title">🧪 Metodologi</div>',
+        unsafe_allow_html=True
+    )
+
+
+    methodology = pd.DataFrame({
+        "Komponen": [
+            "Data Historis",
+            "Periode",
+            "Model",
+            "Feature Engineering",
+            "Scaling",
+            "Evaluasi",
+            "Forecast"
+        ],
+        "Keterangan": [
+            "Data iklim tiga stasiun pesisir",
+            "1985–2025",
+            "Random Forest Regressor",
+            "Lag 1–3 dan Rolling Mean 3",
+            "MinMaxScaler",
+            "RMSE, MAE, R²",
+            "2026–2055"
+        ]
+    })
 
 
     st.dataframe(
-        display_data,
+        methodology,
         use_container_width=True,
-        height=500
-    )
-
-
-    # --------------------------------------------------------
-    # Missing value
-    # --------------------------------------------------------
-
-    st.subheader(
-        "🔎 Pemeriksaan Missing Value"
-    )
-
-
-    missing = pd.DataFrame(
-        {
-            "Kolom": df_monthly.columns,
-            "Missing": [
-                df_monthly[col].isna().sum()
-                for col in df_monthly.columns
-            ]
-        }
-    )
-
-
-    missing["Persentase (%)"] = (
-        missing["Missing"]
-        / len(df_monthly)
-        * 100
-    ).round(2)
-
-
-    st.dataframe(
-        missing,
-        use_container_width=True
+        hide_index=True
     )
 
 
@@ -1505,13 +1405,15 @@ with tab5:
 # FOOTER
 # ============================================================
 
-st.divider()
-
-st.caption(
+st.markdown(
     """
-    Dashboard Iklim Wilayah Pesisir Pulau Sumatera |
-    Data historis 1985–2025 |
-    Random Forest |
-    Forecast 2026–2055
-    """
+    <div class="footer-box">
+    ℹ️ Dashboard ini dikembangkan sebagai bagian dari penelitian skripsi.
+    &nbsp;&nbsp;|&nbsp;&nbsp;
+    🌍 Wilayah: Pesisir Pulau Sumatera
+    &nbsp;&nbsp;|&nbsp;&nbsp;
+    📅 Data historis: 1985–2025
+    </div>
+    """,
+    unsafe_allow_html=True
 )
