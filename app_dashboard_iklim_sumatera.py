@@ -1,4 +1,116 @@
 import streamlit as st
+
+
+# ============================================================
+# PENYIMPANAN HASIL MODEL SECARA PERMANEN
+# ============================================================
+# Catatan:
+# File hasil disimpan di folder hasil_model/.
+# Ini membuat hasil tetap tersedia ketika browser di-refresh
+# selama instance aplikasi masih menggunakan filesystem yang sama.
+# Untuk bertahan setelah redeploy/restart Streamlit Cloud,
+# folder hasil_model perlu ikut di-commit ke repository atau
+# menggunakan penyimpanan eksternal.
+# ============================================================
+
+RESULT_DIR = Path("hasil_model")
+RESULT_DIR.mkdir(parents=True, exist_ok=True)
+
+def _safe_result_name(text):
+    return (
+        str(text)
+        .strip()
+        .replace(" ", "_")
+        .replace("/", "_")
+        .replace("\\", "_")
+    )
+
+def _result_folder(station, parameter):
+    folder = (
+        RESULT_DIR
+        / _safe_result_name(station)
+        / _safe_result_name(parameter)
+    )
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+def save_persistent_result(
+    station,
+    parameter,
+    metrics,
+    evaluation,
+    forecast,
+    annual,
+    features
+):
+    folder = _result_folder(station, parameter)
+
+    pd.DataFrame([{
+        "RMSE": metrics["RMSE"],
+        "MAE": metrics["MAE"],
+        "R2": metrics["R2"]
+    }]).to_csv(folder / "metrics.csv", index=False)
+
+    evaluation.to_csv(folder / "evaluasi.csv", index=False)
+    forecast.to_csv(folder / "forecast_bulanan.csv", index=False)
+    annual.to_csv(folder / "forecast_tahunan.csv", index=False)
+
+    pd.DataFrame({"Feature": features}).to_csv(
+        folder / "features.csv",
+        index=False
+    )
+
+def load_persistent_result(station, parameter):
+    folder = _result_folder(station, parameter)
+
+    required = [
+        "metrics.csv",
+        "evaluasi.csv",
+        "forecast_bulanan.csv",
+        "forecast_tahunan.csv",
+        "features.csv"
+    ]
+
+    if not all((folder / f).exists() for f in required):
+        return None
+
+    metrics_df = pd.read_csv(folder / "metrics.csv")
+    evaluation = pd.read_csv(folder / "evaluasi.csv")
+    forecast = pd.read_csv(folder / "forecast_bulanan.csv")
+    annual = pd.read_csv(folder / "forecast_tahunan.csv")
+    features_df = pd.read_csv(folder / "features.csv")
+
+    if "MONTH" in evaluation.columns:
+        evaluation["MONTH"] = pd.to_datetime(
+            evaluation["MONTH"], errors="coerce"
+        )
+
+    if "MONTH" in forecast.columns:
+        forecast["MONTH"] = pd.to_datetime(
+            forecast["MONTH"], errors="coerce"
+        )
+
+    if "YEAR" in annual.columns:
+        annual["YEAR"] = pd.to_numeric(
+            annual["YEAR"], errors="coerce"
+        )
+
+    metrics = {
+        "RMSE": float(metrics_df.iloc[0]["RMSE"]),
+        "MAE": float(metrics_df.iloc[0]["MAE"]),
+        "R2": float(metrics_df.iloc[0]["R2"])
+    }
+
+    return {
+        "station": station,
+        "parameter": parameter,
+        "metrics": metrics,
+        "evaluation": evaluation,
+        "forecast": forecast,
+        "annual": annual,
+        "features": features_df["Feature"].tolist()
+    }
+
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -1033,6 +1145,16 @@ if page == "🏠 Dashboard":
 
         if "results" not in st.session_state:
             st.session_state["results"] = {}
+
+        save_persistent_result(
+            station=station,
+            parameter=parameter,
+            metrics=metrics,
+            evaluation=evaluation,
+            forecast=forecast,
+            annual=annual,
+            features=features
+        )
 
         st.session_state["results"][key] = {
             "station": station,
