@@ -1,122 +1,12 @@
-from pathlib import Path
 import streamlit as st
-
-
-# ============================================================
-# PENYIMPANAN HASIL MODEL SECARA PERMANEN
-# ============================================================
-# Catatan:
-# File hasil disimpan di folder hasil_model/.
-# Ini membuat hasil tetap tersedia ketika browser di-refresh
-# selama instance aplikasi masih menggunakan filesystem yang sama.
-# Untuk bertahan setelah redeploy/restart Streamlit Cloud,
-# folder hasil_model perlu ikut di-commit ke repository atau
-# menggunakan penyimpanan eksternal.
-# ============================================================
-
-RESULT_DIR = Path("hasil_model")
-RESULT_DIR.mkdir(parents=True, exist_ok=True)
-
-def _safe_result_name(text):
-    return (
-        str(text)
-        .strip()
-        .replace(" ", "_")
-        .replace("/", "_")
-        .replace("\\", "_")
-    )
-
-def _result_folder(station, parameter):
-    folder = (
-        RESULT_DIR
-        / _safe_result_name(station)
-        / _safe_result_name(parameter)
-    )
-    folder.mkdir(parents=True, exist_ok=True)
-    return folder
-
-def save_persistent_result(
-    station,
-    parameter,
-    metrics,
-    evaluation,
-    forecast,
-    annual,
-    features
-):
-    folder = _result_folder(station, parameter)
-
-    pd.DataFrame([{
-        "RMSE": metrics["RMSE"],
-        "MAE": metrics["MAE"],
-        "R2": metrics["R2"]
-    }]).to_csv(folder / "metrics.csv", index=False)
-
-    evaluation.to_csv(folder / "evaluasi.csv", index=False)
-    forecast.to_csv(folder / "forecast_bulanan.csv", index=False)
-    annual.to_csv(folder / "forecast_tahunan.csv", index=False)
-
-    pd.DataFrame({"Feature": features}).to_csv(
-        folder / "features.csv",
-        index=False
-    )
-
-def load_persistent_result(station, parameter):
-    folder = _result_folder(station, parameter)
-
-    required = [
-        "metrics.csv",
-        "evaluasi.csv",
-        "forecast_bulanan.csv",
-        "forecast_tahunan.csv",
-        "features.csv"
-    ]
-
-    if not all((folder / f).exists() for f in required):
-        return None
-
-    metrics_df = pd.read_csv(folder / "metrics.csv")
-    evaluation = pd.read_csv(folder / "evaluasi.csv")
-    forecast = pd.read_csv(folder / "forecast_bulanan.csv")
-    annual = pd.read_csv(folder / "forecast_tahunan.csv")
-    features_df = pd.read_csv(folder / "features.csv")
-
-    if "MONTH" in evaluation.columns:
-        evaluation["MONTH"] = pd.to_datetime(
-            evaluation["MONTH"], errors="coerce"
-        )
-
-    if "MONTH" in forecast.columns:
-        forecast["MONTH"] = pd.to_datetime(
-            forecast["MONTH"], errors="coerce"
-        )
-
-    if "YEAR" in annual.columns:
-        annual["YEAR"] = pd.to_numeric(
-            annual["YEAR"], errors="coerce"
-        )
-
-    metrics = {
-        "RMSE": float(metrics_df.iloc[0]["RMSE"]),
-        "MAE": float(metrics_df.iloc[0]["MAE"]),
-        "R2": float(metrics_df.iloc[0]["R2"])
-    }
-
-    return {
-        "station": station,
-        "parameter": parameter,
-        "metrics": metrics,
-        "evaluation": evaluation,
-        "forecast": forecast,
-        "annual": annual,
-        "features": features_df["Feature"].tolist()
-    }
-
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from pathlib import Path
+import requests
+import base64
+import json
 
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import MinMaxScaler
@@ -284,6 +174,259 @@ MIN_SAMPLES_LEAF = 2
 TRAIN_RATIO = 0.80
 FORECAST_MONTHS = 360
 RANDOM_STATE = 42
+
+
+# ============================================================
+# PENYIMPANAN HASIL PERMANEN KE GITHUB
+# ============================================================
+# Secrets yang diperlukan di Streamlit Cloud:
+#
+# GITHUB_TOKEN = "..."
+# GITHUB_OWNER = "HuriyatulFirdausi"
+# GITHUB_REPO = "dashboard-iklim-sumatera-huriyatul-firdausi"
+# GITHUB_BRANCH = "main"
+#
+# Hasil disimpan sebagai satu file JSON per kombinasi
+# stasiun + parameter. Dengan demikian hasil tetap tersedia
+# setelah browser refresh dan setelah Streamlit instance restart,
+# karena sumber penyimpanannya adalah repository GitHub.
+# ============================================================
+
+def github_config():
+    try:
+        token = st.secrets["GITHUB_TOKEN"]
+        owner = st.secrets["GITHUB_OWNER"]
+        repo = st.secrets["GITHUB_REPO"]
+        branch = st.secrets.get("GITHUB_BRANCH", "main")
+    except Exception:
+        return None
+
+    if not token or not owner or not repo:
+        return None
+
+    return {
+        "token": str(token),
+        "owner": str(owner),
+        "repo": str(repo),
+        "branch": str(branch)
+    }
+
+
+def github_headers(token):
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json"
+    }
+
+
+def github_result_path(station, parameter):
+    station_slug = (
+        station.strip()
+        .replace(" ", "_")
+        .replace("/", "_")
+        .replace("\\", "_")
+    )
+    parameter_slug = (
+        parameter.strip()
+        .replace(" ", "_")
+        .replace("/", "_")
+        .replace("\\", "_")
+    )
+    return f"hasil_model/{station_slug}/{parameter_slug}/hasil.json"
+
+
+def github_get_result(station, parameter):
+    cfg = github_config()
+
+    if cfg is None:
+        return None, "Secrets GitHub belum tersedia."
+
+    path = github_result_path(station, parameter)
+
+    url = (
+        f"https://api.github.com/repos/"
+        f"{cfg['owner']}/{cfg['repo']}/contents/{path}"
+    )
+
+    try:
+        response = requests.get(
+            url,
+            headers=github_headers(cfg["token"]),
+            params={"ref": cfg["branch"]},
+            timeout=20
+        )
+    except Exception as e:
+        return None, f"Gagal terhubung ke GitHub: {e}"
+
+    if response.status_code == 404:
+        return None, None
+
+    if response.status_code != 200:
+        return None, (
+            f"GitHub mengembalikan HTTP {response.status_code}: "
+            f"{response.text[:300]}"
+        )
+
+    try:
+        payload = response.json()
+        content = payload["content"].replace("\n", "")
+        decoded = base64.b64decode(content).decode("utf-8")
+        saved = json.loads(decoded)
+
+        evaluation = pd.DataFrame(saved["evaluation"])
+        forecast = pd.DataFrame(saved["forecast"])
+        annual = pd.DataFrame(saved["annual"])
+
+        if "MONTH" in evaluation.columns:
+            evaluation["MONTH"] = pd.to_datetime(
+                evaluation["MONTH"], errors="coerce"
+            )
+
+        if "MONTH" in forecast.columns:
+            forecast["MONTH"] = pd.to_datetime(
+                forecast["MONTH"], errors="coerce"
+            )
+
+        metrics = {
+            "RMSE": float(saved["metrics"]["RMSE"]),
+            "MAE": float(saved["metrics"]["MAE"]),
+            "R2": float(saved["metrics"]["R2"])
+        }
+
+        result = {
+            "station": station,
+            "parameter": parameter,
+            "metrics": metrics,
+            "evaluation": evaluation,
+            "forecast": forecast,
+            "annual": annual,
+            "features": saved.get("features", [])
+        }
+
+        return result, None
+
+    except Exception as e:
+        return None, f"Gagal membaca hasil dari GitHub: {e}"
+
+
+def github_save_result(
+    station,
+    parameter,
+    metrics,
+    evaluation,
+    forecast,
+    annual,
+    features
+):
+    cfg = github_config()
+
+    if cfg is None:
+        return False, (
+            "Secrets GitHub belum tersedia. "
+            "Pastikan GITHUB_TOKEN, GITHUB_OWNER, "
+            "GITHUB_REPO, dan GITHUB_BRANCH sudah diisi."
+        )
+
+    def frame_records(df):
+        data = df.copy()
+
+        for col in data.columns:
+            if pd.api.types.is_datetime64_any_dtype(data[col]):
+                data[col] = data[col].dt.strftime("%Y-%m-%d")
+
+        return data.where(pd.notna(data), None).to_dict(
+            orient="records"
+        )
+
+    saved = {
+        "station": station,
+        "parameter": parameter,
+        "metrics": {
+            "RMSE": float(metrics["RMSE"]),
+            "MAE": float(metrics["MAE"]),
+            "R2": float(metrics["R2"])
+        },
+        "evaluation": frame_records(evaluation),
+        "forecast": frame_records(forecast),
+        "annual": frame_records(annual),
+        "features": list(features)
+    }
+
+    content = json.dumps(
+        saved,
+        ensure_ascii=False,
+        indent=2
+    )
+
+    encoded = base64.b64encode(
+        content.encode("utf-8")
+    ).decode("utf-8")
+
+    path = github_result_path(station, parameter)
+
+    url = (
+        f"https://api.github.com/repos/"
+        f"{cfg['owner']}/{cfg['repo']}/contents/{path}"
+    )
+
+    headers = github_headers(cfg["token"])
+
+    # Ambil SHA bila file sudah ada, agar PUT menjadi update.
+    sha = None
+
+    try:
+        check = requests.get(
+            url,
+            headers=headers,
+            params={"ref": cfg["branch"]},
+            timeout=20
+        )
+    except Exception as e:
+        return False, f"Gagal terhubung ke GitHub: {e}"
+
+    if check.status_code == 200:
+        try:
+            sha = check.json().get("sha")
+        except Exception:
+            sha = None
+    elif check.status_code != 404:
+        return False, (
+            f"Gagal memeriksa file GitHub "
+            f"(HTTP {check.status_code}): {check.text[:300]}"
+        )
+
+    payload = {
+        "message": (
+            f"Simpan hasil Random Forest - "
+            f"{station} - {parameter}"
+        ),
+        "content": encoded,
+        "branch": cfg["branch"]
+    }
+
+    if sha:
+        payload["sha"] = sha
+
+    try:
+        response = requests.put(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+    except Exception as e:
+        return False, f"Gagal mengirim hasil ke GitHub: {e}"
+
+    if response.status_code in (200, 201):
+        return True, None
+
+    return False, (
+        f"Gagal menyimpan ke GitHub "
+        f"(HTTP {response.status_code}): "
+        f"{response.text[:500]}"
+    )
 
 
 # ============================================================
@@ -1082,13 +1225,23 @@ if page == "🏠 Dashboard":
         parameter
     )
 
-    if key in st.session_state.get("results", {}):
+    saved = st.session_state.get("results", {}).get(key)
 
-        st.success(
-            "Hasil analisis untuk stasiun dan parameter ini sudah tersimpan."
+    if saved is None:
+        saved, load_error = github_get_result(
+            station,
+            parameter
         )
 
-        saved = st.session_state["results"][key]
+        if saved is not None:
+            st.session_state["results"][key] = saved
+
+    if saved is not None:
+
+        st.success(
+            "Hasil analisis sudah tersimpan di GitHub dan "
+            "tetap tersedia setelah refresh."
+        )
 
         m1, m2, m3 = st.columns(3)
 
@@ -1147,17 +1300,7 @@ if page == "🏠 Dashboard":
         if "results" not in st.session_state:
             st.session_state["results"] = {}
 
-        save_persistent_result(
-            station=station,
-            parameter=parameter,
-            metrics=metrics,
-            evaluation=evaluation,
-            forecast=forecast,
-            annual=annual,
-            features=features
-        )
-
-        st.session_state["results"][key] = {
+        result_data = {
             "station": station,
             "parameter": parameter,
             "metrics": metrics,
@@ -1167,9 +1310,29 @@ if page == "🏠 Dashboard":
             "features": features
         }
 
-        st.success(
-            f"Hasil {station} — {parameter} berhasil disimpan."
-        )
+        st.session_state["results"][key] = result_data
+
+        with st.spinner("Menyimpan hasil ke GitHub..."):
+            saved_ok, save_error = github_save_result(
+                station=station,
+                parameter=parameter,
+                metrics=metrics,
+                evaluation=evaluation,
+                forecast=forecast,
+                annual=annual,
+                features=features
+            )
+
+        if saved_ok:
+            st.success(
+                f"Hasil {station} — {parameter} berhasil disimpan "
+                "ke GitHub secara permanen."
+            )
+        else:
+            st.error(
+                "Model berhasil dihitung, tetapi hasil belum tersimpan "
+                f"ke GitHub. Detail: {save_error}"
+            )
 
         st.rerun()
 
@@ -1194,12 +1357,18 @@ elif page == "📊 Validasi & Evaluasi":
         parameter
     )
 
-    results = st.session_state.get(
-        "results",
-        {}
-    )
+    result = st.session_state.get("results", {}).get(key)
 
-    if key not in results:
+    if result is None:
+        result, load_error = github_get_result(
+            station,
+            parameter
+        )
+
+        if result is not None:
+            st.session_state["results"][key] = result
+
+    if result is None:
 
         st.info(
             f"""
@@ -1207,14 +1376,17 @@ elif page == "📊 Validasi & Evaluasi":
 
             Silakan buka halaman **Dashboard**, kemudian klik
             **Jalankan / Perbarui Analisis Random Forest**.
-            Setelah tersimpan, hasilnya akan tetap tersedia ketika
-            kamu berpindah stasiun atau halaman.
             """
         )
 
+        if load_error:
+            st.caption(load_error)
+
     else:
 
-        result = results[key]
+        st.success(
+            "Hasil evaluasi dan forecast dimuat dari penyimpanan GitHub."
+        )
 
         st.success(
             f"Hasil tersimpan: **{station} — "
