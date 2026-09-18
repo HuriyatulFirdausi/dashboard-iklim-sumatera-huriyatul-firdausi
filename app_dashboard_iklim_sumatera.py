@@ -17,6 +17,12 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 # KONFIGURASI
 # ============================================================
 
+
+# Pastikan storage sesi tersedia setiap kali aplikasi baru dimuat/di-refresh.
+# Hasil permanen tetap dibaca dari GitHub; session_state hanya cache sesi.
+if "results" not in st.session_state:
+    st.session_state["results"] = {}
+
 st.set_page_config(
     page_title="Dashboard Iklim Sumatera",
     page_icon="🌦️",
@@ -1234,7 +1240,7 @@ if page == "🏠 Dashboard":
         )
 
         if saved is not None:
-            st.session_state["results"][key] = saved
+            st.session_state.setdefault("results", {})[key] = saved
 
     if saved is not None:
 
@@ -1310,7 +1316,7 @@ if page == "🏠 Dashboard":
             "features": features
         }
 
-        st.session_state["results"][key] = result_data
+        st.session_state.setdefault("results", {})[key] = result_data
 
         with st.spinner("Menyimpan hasil ke GitHub..."):
             saved_ok, save_error = github_save_result(
@@ -1366,7 +1372,7 @@ elif page == "📊 Validasi & Evaluasi":
         )
 
         if result is not None:
-            st.session_state["results"][key] = result
+            st.session_state.setdefault("results", {})[key] = result
 
     if result is None:
 
